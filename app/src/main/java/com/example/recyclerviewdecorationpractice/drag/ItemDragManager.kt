@@ -1,20 +1,28 @@
 package com.example.recyclerviewdecorationpractice.drag
 
 import android.os.Handler
+import android.os.Looper
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import androidx.core.view.GestureDetectorCompat
 import androidx.recyclerview.widget.RecyclerView
 
-class ItemDragManager constructor(recyclerView: RecyclerView) {
+class ItemDragManager constructor(private val recyclerView: RecyclerView) {
 
     private val itemTouchListener: RecyclerView.OnItemTouchListener
     private var isLongPressed = false
-    val handler: Handler = Handler()
-    var mLongPressed = Runnable {
+    private var offsetX = 0f
+    private var offsetY = 0f
+    private var downPositionX = 0f
+    private var downPositionY = 0f
+    private val handler: Handler = Handler(Looper.getMainLooper())
+    private var dragDecoration: DragDecoration? = null
+
+    private var mLongPressed = Runnable {
         isLongPressed = true
     }
+    private var isDragging = false
 
     private val gestureDetector: GestureDetectorCompat = GestureDetectorCompat(recyclerView.context, object : GestureDetector.OnGestureListener {
         override fun onDown(e: MotionEvent?): Boolean {
@@ -46,11 +54,12 @@ class ItemDragManager constructor(recyclerView: RecyclerView) {
     })
 
     init {
-
         itemTouchListener = object : RecyclerView.OnItemTouchListener {
             override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
+                        downPositionX = e.x
+                        downPositionY = e.y
                         handler.postDelayed(mLongPressed, ViewConfiguration.getLongPressTimeout().toLong())
                     }
                     MotionEvent.ACTION_MOVE -> {
@@ -65,12 +74,18 @@ class ItemDragManager constructor(recyclerView: RecyclerView) {
             override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        handler.postDelayed(mLongPressed, ViewConfiguration.getLongPressTimeout().toLong())
+                        downPositionX = e.x
+                        downPositionY = e.y
                     }
                     MotionEvent.ACTION_MOVE -> {
+                        offsetX = e.x - downPositionX
+                        offsetY = e.y - downPositionY
+                        checkAndStartDragging(offsetX, offsetY)
                     }
                     MotionEvent.ACTION_UP -> {
                         isLongPressed = false
+                        isDragging = false
+                        finishDragging()
                     }
                 }
             }
@@ -81,24 +96,22 @@ class ItemDragManager constructor(recyclerView: RecyclerView) {
         }
 
         recyclerView.addOnItemTouchListener(itemTouchListener)
-
     }
 
-    private fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-
+    private fun checkAndStartDragging(x: Float, y: Float) {
+        if (isLongPressed && !isDragging) {
+            findChildViewHolderUnderWithoutTranslation(recyclerView, downPositionX, downPositionY)?.let {
+                dragDecoration = DragDecoration(recyclerView, it)
+                dragDecoration?.startDragging(x, y)
+                isDragging = true
             }
-            MotionEvent.ACTION_MOVE -> {
-            }
-            MotionEvent.ACTION_UP -> {
-
-            }
+        } else if (isDragging) {
+            dragDecoration?.updatePosition(x, y)
         }
     }
 
-    fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent) {
-
+    private fun finishDragging() {
+        dragDecoration?.finishDragging()
     }
 
     fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
